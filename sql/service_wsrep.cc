@@ -245,15 +245,16 @@ extern "C" my_bool wsrep_thd_skip_locking(const THD *thd)
 
 extern "C" my_bool wsrep_thd_order_before(const THD *left, const THD *right)
 {
-  if (wsrep_thd_trx_seqno(left) < wsrep_thd_trx_seqno(right)) {
-    WSREP_DEBUG("BF conflict, order: %lld %lld\n",
-                (long long)wsrep_thd_trx_seqno(left),
-                (long long)wsrep_thd_trx_seqno(right));
+  WSREP_DEBUG("BF conflict, order: %lld %lld\n",
+               wsrep_thd_trx_seqno(left),
+               wsrep_thd_trx_seqno(right));
+
+  if (wsrep_thd_trx_seqno(left) == WSREP_SEQNO_UNDEFINED ||
+      wsrep_thd_trx_seqno(right) == WSREP_SEQNO_UNDEFINED)
+    return 1; /* BF is not yet replicated */
+  else if (wsrep_thd_trx_seqno(left) < wsrep_thd_trx_seqno(right))
     return TRUE;
-  }
-  WSREP_DEBUG("waiting for BF, trx order: %lld %lld\n",
-              (long long)wsrep_thd_trx_seqno(left),
-              (long long)wsrep_thd_trx_seqno(right));
+
   return FALSE;
 }
 
