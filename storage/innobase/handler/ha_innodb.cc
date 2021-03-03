@@ -19596,21 +19596,31 @@ static void bg_wsrep_kill_trx(
 	DBUG_ENTER("bg_wsrep_kill_trx");
 
 	if (thd) {
-		victim_trx = thd_to_trx(thd);
-		lock_mutex_enter();
-		trx_mutex_enter(victim_trx);
-		if (victim_trx->id != arg->trx_id)
-		{
-			trx_mutex_exit(victim_trx);
-			lock_mutex_exit();
+		victim_trx= thd_to_trx(thd);
+		/* Victim trx might not exists e.g. on MDL-conflict. */
+		if (victim_trx) {
+			lock_mutex_enter();
+			trx_mutex_enter(victim_trx);
+			if (victim_trx->id != arg->trx_id ||
+			    victim_trx->state == TRX_STATE_COMMITTED_IN_MEMORY)
+			{
+				/* Victim was meanwhile rolled back or
+				committed */
+				trx_mutex_exit(victim_trx);
+				lock_mutex_exit();
+				wsrep_thd_UNLOCK(thd);
+				victim_trx= NULL;
+			}
+		} else {
+			/* find_thread_by_id locked
+			THD::LOCK_thd_data */
 			wsrep_thd_UNLOCK(thd);
-			victim_trx = NULL;
 		}
 	}
 
 	if (!victim_trx) {
-		/* it can happen that trx_id was meanwhile rolled back */
-		DBUG_PRINT("wsrep", ("no thd for conflicting lock"));
+		/* Victim trx migh not exists (MDL-conflict) or victim
+		was meanwhile rolled back or committed. */
 		goto ret;
 	}
 
@@ -19766,7 +19776,7 @@ static void bg_wsrep_kill_trx(
 	}
 
 ret_awake:
-	awake = true;
+	awake= true;
 
 ret_unlock:
 	trx_mutex_exit(victim_trx);

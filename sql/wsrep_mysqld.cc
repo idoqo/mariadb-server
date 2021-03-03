@@ -2788,15 +2788,16 @@ extern "C" bool wsrep_thd_ignore_table(THD *thd)
 extern int
 wsrep_trx_order_before(THD *thd1, THD *thd2)
 {
-    if (wsrep_thd_trx_seqno(thd1) < wsrep_thd_trx_seqno(thd2)) {
-        WSREP_DEBUG("BF conflict, order: %lld %lld\n",
-                    (long long)wsrep_thd_trx_seqno(thd1),
-                    (long long)wsrep_thd_trx_seqno(thd2));
+    WSREP_DEBUG("BF conflict, order: %lld %lld\n",
+                wsrep_thd_trx_seqno(thd1),
+                wsrep_thd_trx_seqno(thd2));
+
+    if (wsrep_thd_trx_seqno(thd1) == WSREP_SEQNO_UNDEFINED ||
+	wsrep_thd_trx_seqno(thd2) == WSREP_SEQNO_UNDEFINED)
+	return 1; /* BF is not yet replicated */
+    else if (wsrep_thd_trx_seqno(thd1) < wsrep_thd_trx_seqno(thd2))
         return 1;
-    }
-    WSREP_DEBUG("waiting for BF, trx order: %lld %lld\n",
-                (long long)wsrep_thd_trx_seqno(thd1),
-                (long long)wsrep_thd_trx_seqno(thd2));
+
     return 0;
 }
 
