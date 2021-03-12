@@ -230,6 +230,9 @@ public:
 
 		/** Use punch hole if available*/
 		PUNCH_HOLE = 256,
+
+		/** Use punch hole for a range */
+		RANGE_PUNCH_HOLE = 512
 	};
 
 	/** Default constructor */
@@ -311,6 +314,11 @@ public:
 		MY_ATTRIBUTE((warn_unused_result))
 	{
 		return((m_type & DO_NOT_WAKE) == 0);
+	}
+
+	bool range_punch_hole() const
+	{
+		return (m_type & RANGE_PUNCH_HOLE);
 	}
 
 	/** Clear the punch hole flag */

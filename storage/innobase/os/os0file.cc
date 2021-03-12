@@ -4982,6 +4982,11 @@ os_file_io(
 	IORequest	type = in_type;
 	ssize_t		bytes_returned = 0;
 
+	if (type.range_punch_hole()) {
+		*err = type.punch_hole(file, offset, n);
+		return *err;
+	}
+
 	SyncFileIO	sync_file_io(file, buf, n, offset);
 
 	for (ulint i = 0; i < NUM_RETRIES_ON_PARTIAL_IO; ++i) {
@@ -5001,7 +5006,8 @@ os_file_io(
 			    && !type.is_log()
 			    && type.is_write()
 			    && type.punch_hole()) {
-				*err = type.punch_hole(file, offset, n);
+				*err = type.punch_hole(
+					file, offset, n);
 
 			} else {
 				*err = DB_SUCCESS;
@@ -5637,8 +5643,12 @@ IORequest::punch_hole(os_file_t fh, os_offset_t off, ulint len)
 	);
 
 	ulint trim_len = get_trim_length(len);
+	const bool range_punch= range_punch_hole();
 
-	if (trim_len == 0) {
+	if (range_punch) {
+		trim_len = len;
+		len = 0;
+	} else if (trim_len == 0) {
 		return(DB_SUCCESS);
 	}
 
@@ -5646,7 +5656,8 @@ IORequest::punch_hole(os_file_t fh, os_offset_t off, ulint len)
 
 	/* Check does file system support punching holes for this
 	tablespace. */
-	if (!should_punch_hole() || !srv_use_trim) {
+	if (!range_punch
+	    && (!should_punch_hole() || !srv_use_trim)) {
 		return DB_IO_NO_PUNCH_HOLE;
 	}
 
@@ -5659,7 +5670,9 @@ IORequest::punch_hole(os_file_t fh, os_offset_t off, ulint len)
 		set space so that it is not used. */
 		if (err == DB_IO_NO_PUNCH_HOLE) {
 			space_no_punch_hole();
-			err = DB_SUCCESS;
+			if (!range_punch) {
+				err = DB_SUCCESS;
+			}
 		}
 	}
 
