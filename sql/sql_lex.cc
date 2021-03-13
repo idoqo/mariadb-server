@@ -612,7 +612,8 @@ Query_tables_list::binlog_stmt_unsafe_errcode[BINLOG_STMT_UNSAFE_COUNT] =
   ER_BINLOG_UNSAFE_CREATE_SELECT_AUTOINC,
   ER_BINLOG_UNSAFE_UPDATE_IGNORE,
   ER_BINLOG_UNSAFE_INSERT_TWO_KEYS,
-  ER_BINLOG_UNSAFE_AUTOINC_NOT_FIRST
+  ER_BINLOG_UNSAFE_AUTOINC_NOT_FIRST,
+  ER_BINLOG_UNSAFE_SKIP_LOCKED
 };
 
 
@@ -9690,16 +9691,18 @@ void Lex_select_lock::set_to(SELECT_LEX *sel)
       sel->master_unit()->set_lock_to_the_last_select(*this);
     else
     {
+      thr_lock_type lock_type;
       sel->parent_lex->safe_to_cache_query= 0;
-      if (update_lock)
+      if (skip_locked)
       {
-        sel->lock_type= skip_locked ? TL_WRITE_SKIP_LOCKED : TL_WRITE;
+        sel->parent_lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SKIP_LOCKED);
+        lock_type= update_lock ? TL_WRITE_SKIP_LOCKED : TL_READ_SKIP_LOCKED;
       }
       else
       {
-        sel->lock_type= skip_locked ? TL_READ_SKIP_LOCKED : TL_READ_WITH_SHARED_LOCKS;
+        lock_type= update_lock ? TL_WRITE : TL_READ_WITH_SHARED_LOCKS;
       }
-      sel->set_lock_for_tables(sel->lock_type, false, skip_locked);
+      sel->set_lock_for_tables(lock_type, false, skip_locked);
     }
   }
 }

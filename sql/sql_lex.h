@@ -1943,6 +1943,13 @@ public:
     */
     BINLOG_STMT_UNSAFE_AUTOINC_NOT_FIRST,
 
+    /**
+       INSERT .. SELECT ... SKIP LOCKED is unlikely to have the same
+       rows locked on the replica.
+       primary key.
+    */
+    BINLOG_STMT_UNSAFE_SKIP_LOCKED,
+
     /* The last element of this enumeration type. */
     BINLOG_STMT_UNSAFE_COUNT
   };
