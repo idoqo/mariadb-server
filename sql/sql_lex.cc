@@ -2715,6 +2715,7 @@ int Lex_input_stream::scan_ident_middle(THD *thd, Lex_ident_cli_st *str,
   uchar c;
   bool is_8bit;
   bool resolve_introducer= true;
+  myf utf8_flag= thd->get_utf8_flag();
   DBUG_ASSERT(m_ptr == m_tok_start + 1); // m_ptr points to the second byte
 
   if (cs->use_mb())
@@ -2790,9 +2791,7 @@ int Lex_input_stream::scan_ident_middle(THD *thd, Lex_ident_cli_st *str,
     ErrConvString csname(str->str + 1, str->length - 1, &my_charset_bin);
     CHARSET_INFO *cs= get_charset_by_csname(csname.ptr(),
                                                  MY_CS_PRIMARY,
-                                            thd->variables.old_behavior &
-                                            OLD_MODE_UTF8_IS_UTF8MB3 ?
-                                            MYF(MY_UTF8_IS_UTF8MB3) : MYF(0));
+                                             MYF(utf8_flag));
     if (cs)
     {
       *introducer= cs;

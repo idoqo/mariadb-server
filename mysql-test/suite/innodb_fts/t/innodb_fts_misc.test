@@ -4,7 +4,7 @@
 
 --source include/have_innodb.inc
 --source include/default_charset.inc
-let collation=UTF8_UNICODE_CI;
+let collation=UTF8MB3_UNICODE_CI;
 --source include/have_collation.inc
 
 # Create FTS table

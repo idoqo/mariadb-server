@@ -326,10 +326,9 @@ bool load_collation(THD *thd, MEM_ROOT *mem_root,
   }
 
   DBUG_ASSERT(cl_name.str[cl_name.length] == 0);
-  *cl= get_charset_by_name(cl_name.str,
-                           thd->variables.old_behavior &
-                                OLD_MODE_UTF8_IS_UTF8MB3 ?
-                                  MYF(MY_UTF8_IS_UTF8MB3) : MYF(0));
+
+  myf utf8_flag=thd->get_utf8_flag();
+  *cl= get_charset_by_name(cl_name.str, MYF(utf8_flag | 0));
 
   if (*cl == NULL)
   {

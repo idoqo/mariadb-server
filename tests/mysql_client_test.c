@@ -19236,7 +19236,7 @@ static void test_bug12337762()
   rc= mysql_query(mysql, "create table charset_tab("\
                          "txt1 varchar(32) character set Latin1,"\
                          "txt2 varchar(32) character set Latin1 collate latin1_bin,"\
-                         "txt3 varchar(32) character set utf8mb3 collate utf8_bin"\
+                         "txt3 varchar(32) character set utf8mb3 collate utf8mb3_bin"\
 						 ")");
   
   DIE_UNLESS(rc == 0);

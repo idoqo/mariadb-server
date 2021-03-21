@@ -9690,6 +9690,7 @@ static bool show_create_trigger_impl(THD *thd, Trigger *trigger)
   MEM_ROOT *mem_root= thd->mem_root;
   char definer_holder[USER_HOST_BUFF_SIZE];
   trg_definer.str= definer_holder;
+  myf utf8_flag= thd->get_utf8_flag();
 
   /*
     TODO: Check privileges here. This functionality will be added by
@@ -9708,9 +9709,7 @@ static bool show_create_trigger_impl(THD *thd, Trigger *trigger)
 
   /* Resolve trigger client character set. */
 
-  if (resolve_charset(trigger->client_cs_name.str, NULL, &trg_client_cs,
-                      thd->variables.old_behavior & OLD_MODE_UTF8_IS_UTF8MB3 ?
-                           MYF(MY_UTF8_IS_UTF8MB3):MYF(0)))
+  if (resolve_charset(trigger->client_cs_name.str, NULL, &trg_client_cs, MYF(utf8_flag)))
     return TRUE;
 
   /* Send header. */
