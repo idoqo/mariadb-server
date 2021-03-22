@@ -607,24 +607,22 @@ inline_mysql_socket_fd
   MYSQL_SOCKET mysql_socket= MYSQL_INVALID_SOCKET;
   mysql_socket.fd= fd;
 
-  if (likely(mysql_socket.fd != INVALID_SOCKET))
-  {
+  DBUG_ASSERT(mysql_socket.fd != INVALID_SOCKET);
 #ifdef HAVE_PSI_SOCKET_INTERFACE
-    mysql_socket.m_psi= PSI_SOCKET_CALL(init_socket)
-      (key, (const my_socket*)&mysql_socket.fd, NULL, 0);
+  mysql_socket.m_psi= PSI_SOCKET_CALL(init_socket)
+    (key, (const my_socket*)&mysql_socket.fd, NULL, 0);
 #endif
-    /**
-      Currently systemd socket activation is the user of this
-      function. Its API, man sd_listen_fds, says FD_CLOSE_EXEC
-      is already called. If there becomes another user, we
-      can call it again without detriment.
+  /**
+    Currently systemd socket activation is the user of this
+    function. Its API (man sd_listen_fds) says FD_CLOSE_EXEC
+    is already called. If there becomes another user, we
+    can call it again without detriment.
 
-      If needed later:
-      #if defined(HAVE_FCNTL) && defined(FD_CLOEXEC)
-          (void) fcntl(mysql_socket.fd, F_SETFD, FD_CLOEXEC);
-      #endif
-    */
-  }
+    If needed later:
+    #if defined(HAVE_FCNTL) && defined(FD_CLOEXEC)
+        (void) fcntl(mysql_socket.fd, F_SETFD, FD_CLOEXEC);
+    #endif
+  */
 
   return mysql_socket;
 }

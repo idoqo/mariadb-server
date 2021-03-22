@@ -1352,6 +1352,8 @@ struct my_rnd_struct sql_rand; ///< used by sql_class.cc:THD::THD()
 Dynamic_array<MYSQL_SOCKET> listen_sockets(PSI_INSTRUMENT_MEM, 0);
 bool unix_sock_is_online= false;
 static int systemd_sock_activation; /* systemd socket activation */
+
+
 /**
   Error reporter that buffer log messages.
   @param level          log message level
@@ -2388,6 +2390,7 @@ static void activate_tcp_port(uint port,
   DBUG_VOID_RETURN;
 }
 
+
 /**
    Activate usage of a systemd activated sockets
    i.e started by mariadb.socket
@@ -2395,8 +2398,6 @@ static void activate_tcp_port(uint port,
 
 static void use_systemd_activated_sockets()
 {
-  MYSQL_SOCKET sock;
-  int fd;
   char **names = NULL;
   int sd_sockets;
   DBUG_ENTER("use_systemd_activated_sockets");
@@ -2404,13 +2405,13 @@ static void use_systemd_activated_sockets()
   sd_sockets= sd_listen_fds_with_names(0, &names);
 
   if (!sd_sockets)
-  {
     DBUG_VOID_RETURN;
-  }
+
   DBUG_PRINT("general",("Systemd listen_fds is %d", sd_sockets));
   while (sd_sockets--)
   {
-    fd= SD_LISTEN_FDS_START + sd_sockets;
+    MYSQL_SOCKET sock;
+    int fd= SD_LISTEN_FDS_START + sd_sockets;
     if (sd_is_socket_unix(fd,  SOCK_STREAM, 1, NULL, 0))
     {
       sock= mysql_socket_fd(key_socket_unix, fd);
@@ -2425,24 +2426,23 @@ static void use_systemd_activated_sockets()
     {
       sql_print_error("Unknown systemd socket activation socket %d,"
                       " not listening, not unix or TCP socket, or not a type SOCK_STREAM", fd);
-      if (names)
-      {
-        free(names);
-      }
+      free(names);
       unireg_abort(1);
     }
+    /*
+      We check names!=NULL here because sd_listen_fds_with_names maybe
+      just sd_listen_fds on older pre v227 systemd
+    */
     sock.is_extra_port= names && strcmp(names[sd_sockets], "extra") == 0;
     mysql_socket_set_thread_owner(sock);
     listen_sockets.push(sock);
   }
   systemd_sock_activation= 1;
-  if (names)
-  {
-    free(names);
-  }
+  free(names);
 
   DBUG_VOID_RETURN;
 }
+
 
 static void network_init(void)
 {
