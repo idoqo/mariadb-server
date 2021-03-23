@@ -2398,6 +2398,7 @@ static void activate_tcp_port(uint port,
 
 static void use_systemd_activated_sockets()
 {
+#if __linux__
   char **names = NULL;
   int sd_sockets;
   DBUG_ENTER("use_systemd_activated_sockets");
@@ -2411,24 +2412,96 @@ static void use_systemd_activated_sockets()
   while (sd_sockets--)
   {
     MYSQL_SOCKET sock;
+    int stype= 0, accepting= 0, getnameinfo_err;
+    socklen_t l;
+    union
+    {
+          struct sockaddr sa;
+          struct sockaddr_storage storage;
+          struct sockaddr_in in;
+          struct sockaddr_in6 in6;
+          struct sockaddr_un un;
+    } addr;
+    SOCKET_SIZE_TYPE addrlen= sizeof(addr);
+    char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
+
     int fd= SD_LISTEN_FDS_START + sd_sockets;
-    if (sd_is_socket_unix(fd,  SOCK_STREAM, 1, NULL, 0))
+
+    if (getsockname(fd, &addr.sa, &addrlen))
     {
-      sock= mysql_socket_fd(key_socket_unix, fd);
-      sock.is_unix_domain_socket= 1;
+      sql_print_error("Unable to getsockname on systemd socket activation socket %d,"
+                      " errno %d", fd, errno);
+      goto err;
     }
-    else if (sd_is_socket_inet(fd, AF_UNSPEC, SOCK_STREAM, 1, 0))
+
+    l= sizeof(stype);
+    if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &stype, &l) < 0)
     {
-      sock= mysql_socket_fd(key_socket_tcpip, fd);
-      sock.is_unix_domain_socket= 0;
+      sql_print_error("Unable to getsockopt(SOL_SOCKET, SO_TYPE) on"
+		     " systemd socket activation socket %d,"
+                      " errno %d", fd, errno);
+      goto err;
     }
-    else
+
+    if (stype != SOCK_STREAM)
     {
       sql_print_error("Unknown systemd socket activation socket %d,"
-                      " not listening, not unix or TCP socket, or not a type SOCK_STREAM", fd);
-      free(names);
-      unireg_abort(1);
+                      " not of type SOCK_STREAM - type %d", fd, stype);
+      goto err;
     }
+
+    l= sizeof(accepting);
+    if (getsockopt(fd, SOL_SOCKET, SO_ACCEPTCONN, &accepting, &l) < 0)
+    {
+      sql_print_error("Unable to getsockopt(SOL_SOCKET, SO_ACCEPTCONN) on"
+		     " systemd socket activation socket %d,"
+                      " errno %d", fd, errno);
+      goto err;
+    }
+
+    if (!accepting)
+    {
+      sql_print_error("Unknown systemd socket activation socket %d,"
+                      " is not listening", fd);
+      goto err;
+    }
+
+    switch (addr.sa.sa_family)
+    {
+    case AF_INET:
+      sock= mysql_socket_fd(key_socket_tcpip, fd);
+      sock.is_unix_domain_socket= 0;
+      mysqld_port= ntohs(addr.in.sin_port);
+      break;
+    case AF_INET6:
+      sock= mysql_socket_fd(key_socket_tcpip, fd);
+      sock.is_unix_domain_socket= 0;
+      mysqld_port= ntohs(addr.in6.sin6_port);
+      break;
+    case AF_UNIX:
+      sock= mysql_socket_fd(key_socket_unix, fd);
+      sock.is_unix_domain_socket= 1;
+      break;
+    default:
+      sql_print_error("Unknown systemd socket activation socket %d,"
+                      " not UNIX or INET socket", fd);
+      goto err;
+    }
+
+    getnameinfo_err= getnameinfo(&addr.sa, addrlen, hbuf, sizeof(hbuf), sbuf,
+                                 sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
+    if (getnameinfo_err)
+      sql_print_warning("getnameinfo() on systemd socket activation socket %d"
+		        " failed with error %d", fd, getnameinfo_err);
+    else
+    {
+      /* handle abstract sockets and present them in @ form */
+      if (sbuf[0] == '\0')
+	addr.un.sun_path[0] = '@';
+      sql_print_information("Using systemd activated socket %s port %s", hbuf,
+		     sbuf[0] == '\0' ? addr.un.sun_path : sbuf);
+    }
+
     /*
       We check names!=NULL here because sd_listen_fds_with_names maybe
       just sd_listen_fds on older pre v227 systemd
@@ -2440,6 +2513,12 @@ static void use_systemd_activated_sockets()
   systemd_sock_activation= 1;
   free(names);
 
+  DBUG_VOID_RETURN;
+
+err:
+  free(names);
+  unireg_abort(1);
+#endif /* __linux__ */
   DBUG_VOID_RETURN;
 }
 
@@ -5695,7 +5774,7 @@ int mysqld_main(int argc, char **argv)
     sql_print_information(ER_DEFAULT(ER_STARTUP), my_progname, server_version,
                           (systemd_sock_activation ? "Systemd socket activated ports" :
                             (unix_sock_is_online ? mysqld_unix_port : (char*) "")),
-                          (systemd_sock_activation ? 0 : mysqld_port), MYSQL_COMPILATION_COMMENT);
+                          mysqld_port, MYSQL_COMPILATION_COMMENT);
   else
   {
     char real_server_version[2 * SERVER_VERSION_LENGTH + 10];
@@ -5708,7 +5787,7 @@ int mysqld_main(int argc, char **argv)
                           real_server_version,
                           (systemd_sock_activation ? "Systemd socket activated ports" :
                             (unix_sock_is_online ? mysqld_unix_port : (char*) "")),
-                          (systemd_sock_activation ? 0 : mysqld_port), MYSQL_COMPILATION_COMMENT);
+                          mysqld_port, MYSQL_COMPILATION_COMMENT);
   }
 
 #ifndef _WIN32
