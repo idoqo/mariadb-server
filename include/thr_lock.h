@@ -47,12 +47,21 @@ enum thr_lock_type { TL_IGNORE=-1,
 		     TL_READ_HIGH_PRIORITY,
 		     /* READ, Don't allow concurrent insert */
 		     TL_READ_NO_INSERT,
+		     /*
+		       These values are to impose some consistency in the sql
+		       layer on determining read/write transactions and to
+		       provide some ABI compatibility if additional transactions
+		       are added. TL_READ_MAX should always be >= the largest READ
+		       transaction type.
+		     */
+		     TL_READ_MAX= 31,
+		     TL_WRITE_MIN,
 		     /* 
 			Write lock, but allow other threads to read / write.
 			Used by BDB tables in MySQL to mark that someone is
 			reading/writing to the table.
 		      */
-		     TL_WRITE_ALLOW_WRITE,
+		     TL_WRITE_ALLOW_WRITE= TL_WRITE_MIN,
 		     /*
 		       WRITE lock used by concurrent insert. Will allow
 		       READ, if one could use concurrent insert on table.
