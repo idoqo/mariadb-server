@@ -29,12 +29,14 @@ TL_READ                 # Low priority read
 TL_READ_WITH_SHARED_LOCKS
 TL_READ_HIGH_PRIORITY	# High priority read
 TL_READ_NO_INSERT	# Read without concurrent inserts
+TL_READ_SKIP_LOCKS      # Read and skip locks
 TL_WRITE_ALLOW_WRITE	# Write lock that allows other writers
 TL_WRITE_CONCURRENT_INSERT
 			# Insert that can be mixed when selects
 TL_WRITE_DELAYED	# Used by delayed insert
 			# Allows lower locks to take over
 TL_WRITE_LOW_PRIORITY	# Low priority write
+TL_WRITE_SKIP_LOCKED    # Write, but skip locks if they are found
 TL_WRITE		# High priority write
 TL_WRITE_ONLY		# High priority write
 			# Abort all new lock request with an error
