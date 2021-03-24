@@ -1051,19 +1051,7 @@ static void execute_rename_table(DDL_LOG_ENTRY *ddl_log_entry, handler *file,
                                     flags & FN_FROM_IS_TMP);
     build_lower_case_table_filename(to_path, FN_REFLEN,
                                     to_db, to_table, flags & FN_TO_IS_TMP);
-  }
-  else
-  {
-    fr_length= build_table_filename(from_path, FN_REFLEN,
-                                    from_db->str, from_table->str, "",
-                                    flags & FN_TO_IS_TMP);
-    to_length= build_table_filename(to_path, FN_REFLEN,
-                                    to_db->str, to_table->str, "",
-                                    flags & FN_TO_IS_TMP);
-  }
-  file->ha_rename_table(from_path, to_path);
-  if (file->needs_lower_case_filenames())
-  {
+    file->ha_rename_table(from_path, to_path);
     /*
       We have to rebuild the file names as the .frm file should be used
       without lower case conversion
@@ -1077,6 +1065,13 @@ static void execute_rename_table(DDL_LOG_ENTRY *ddl_log_entry, handler *file,
   }
   else
   {
+    fr_length= build_table_filename(from_path, FN_REFLEN,
+                                    from_db->str, from_table->str, "",
+                                    flags & FN_TO_IS_TMP);
+    to_length= build_table_filename(to_path, FN_REFLEN,
+                                    to_db->str, to_table->str, "",
+                                    flags & FN_TO_IS_TMP);
+    file->ha_rename_table(from_path, to_path);
     strmov(from_path+fr_length, reg_ext);
     strmov(to_path+to_length,   reg_ext);
   }
