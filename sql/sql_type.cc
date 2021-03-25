@@ -2671,9 +2671,12 @@ bool Type_handler::
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
                                         handler *file,
-                                        ulonglong table_flags) const
+                                        ulonglong table_flags,
+                                        const Column_derived_attributes
+                                              *derived_attr)
+                                        const
 {
-  def->create_length_to_internal_length_simple();
+  def->prepare_stage1_simple(&my_charset_bin);
   return false;
 }
 
@@ -2682,8 +2685,12 @@ bool Type_handler_null::
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
                                         handler *file,
-                                        ulonglong table_flags) const
+                                        ulonglong table_flags,
+                                        const Column_derived_attributes
+                                              *derived_attr)
+                                        const
 {
+  def->prepare_charset_for_string(derived_attr);
   def->create_length_to_internal_length_null();
   return false;
 }
@@ -2693,9 +2700,42 @@ bool Type_handler_row::
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
                                         handler *file,
-                                        ulonglong table_flags) const
+                                        ulonglong table_flags,
+                                        const Column_derived_attributes
+                                              *derived_attr)
+                                        const
 {
+  def->charset= &my_charset_bin;
   def->create_length_to_internal_length_null();
+  return false;
+}
+
+bool Type_handler_temporal_result::
+       Column_definition_prepare_stage1(THD *thd,
+                                        MEM_ROOT *mem_root,
+                                        Column_definition *def,
+                                        handler *file,
+                                        ulonglong table_flags,
+                                        const Column_derived_attributes
+                                              *derived_attr)
+                                        const
+{
+  def->prepare_stage1_simple(&my_charset_numeric);
+  return false;
+}
+
+
+bool Type_handler_numeric::
+       Column_definition_prepare_stage1(THD *thd,
+                                        MEM_ROOT *mem_root,
+                                        Column_definition *def,
+                                        handler *file,
+                                        ulonglong table_flags,
+                                        const Column_derived_attributes
+                                              *derived_attr)
+                                        const
+{
+  def->prepare_stage1_simple(&my_charset_numeric);
   return false;
 }
 
@@ -2704,8 +2744,12 @@ bool Type_handler_newdecimal::
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
                                         handler *file,
-                                        ulonglong table_flags) const
+                                        ulonglong table_flags,
+                                        const Column_derived_attributes
+                                              *derived_attr)
+                                        const
 {
+  def->charset= &my_charset_numeric;
   def->create_length_to_internal_length_newdecimal();
   return false;
 }
@@ -2715,8 +2759,12 @@ bool Type_handler_bit::
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
                                         handler *file,
-                                        ulonglong table_flags) const
+                                        ulonglong table_flags,
+                                        const Column_derived_attributes
+                                              *derived_attr)
+                                        const
 {
+  def->charset= &my_charset_numeric;
   return def->prepare_stage1_bit(thd, mem_root, file, table_flags);
 }
 
@@ -2725,9 +2773,13 @@ bool Type_handler_typelib::
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
                                         handler *file,
-                                        ulonglong table_flags) const
+                                        ulonglong table_flags,
+                                        const Column_derived_attributes
+                                              *derived_attr)
+                                        const
 {
-  return def->prepare_stage1_typelib(thd, mem_root, file, table_flags);
+  return def->prepare_charset_for_string(derived_attr) ||
+         def->prepare_stage1_typelib(thd, mem_root, file, table_flags);
 }
 
 
@@ -2736,9 +2788,13 @@ bool Type_handler_string_result::
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
                                         handler *file,
-                                        ulonglong table_flags) const
+                                        ulonglong table_flags,
+                                        const Column_derived_attributes
+                                              *derived_attr)
+                                        const
 {
-  return def->prepare_stage1_string(thd, mem_root, file, table_flags);
+  return def->prepare_charset_for_string(derived_attr) ||
+         def->prepare_stage1_string(thd, mem_root, file, table_flags);
 }
 
 
@@ -2748,8 +2804,12 @@ bool Type_handler_geometry::
                                         MEM_ROOT *mem_root,
                                         Column_definition *def,
                                         handler *file,
-                                        ulonglong table_flags) const
+                                        ulonglong table_flags,
+                                        const Column_derived_attributes
+                                              *derived_attr)
+                                        const
 {
+  def->charset= &my_charset_bin;
   def->create_length_to_internal_length_string();
   return def->prepare_blob_field(thd);
 }
@@ -2758,14 +2818,38 @@ bool Type_handler_geometry::
 
 /*************************************************************************/
 
+bool Type_handler_general_purpose_string::
+       Column_definition_bulk_alter(Column_definition *def,
+                                    const Column_derived_attributes
+                                          *derived_attr,
+                                    const Column_bulk_alter_attributes
+                                          *bulk_alter_attr)
+                                    const
+{
+  if (!bulk_alter_attr->alter_table_convert_to_charset())
+    return false; // No "CONVERT TO" clause.
+  CHARSET_INFO *defcs= def->explicit_or_derived_charset(derived_attr);
+  DBUG_ASSERT(defcs);
+  /*
+    Handle 'ALTER TABLE t1 CONVERT TO CHARACTER SET csname'.
+    Change character sets for all varchar/char/text columns,
+    but do not touch varbinary/binary/blob columns.
+  */
+  if (defcs != &my_charset_bin)
+    def->charset= bulk_alter_attr->alter_table_convert_to_charset();
+  return false;
+};
+
+
+/*************************************************************************/
+
 bool Type_handler::
        Column_definition_redefine_stage1(Column_definition *def,
                                          const Column_definition *dup,
-                                         const handler *file,
-                                         const Schema_specification_st *schema)
+                                         const handler *file)
                                          const
 {
-  def->redefine_stage1_common(dup, file, schema);
+  def->redefine_stage1_common(dup, file);
   def->create_length_to_internal_length_simple();
   return false;
 }
@@ -2774,11 +2858,10 @@ bool Type_handler::
 bool Type_handler_null::
        Column_definition_redefine_stage1(Column_definition *def,
                                          const Column_definition *dup,
-                                         const handler *file,
-                                         const Schema_specification_st *schema)
+                                         const handler *file)
                                          const
 {
-  def->redefine_stage1_common(dup, file, schema);
+  def->redefine_stage1_common(dup, file);
   def->create_length_to_internal_length_null();
   return false;
 }
@@ -2787,11 +2870,10 @@ bool Type_handler_null::
 bool Type_handler_newdecimal::
        Column_definition_redefine_stage1(Column_definition *def,
                                          const Column_definition *dup,
-                                         const handler *file,
-                                         const Schema_specification_st *schema)
+                                         const handler *file)
                                          const
 {
-  def->redefine_stage1_common(dup, file, schema);
+  def->redefine_stage1_common(dup, file);
   def->create_length_to_internal_length_newdecimal();
   return false;
 }
@@ -2800,11 +2882,10 @@ bool Type_handler_newdecimal::
 bool Type_handler_string_result::
        Column_definition_redefine_stage1(Column_definition *def,
                                          const Column_definition *dup,
-                                         const handler *file,
-                                         const Schema_specification_st *schema)
+                                         const handler *file)
                                          const
 {
-  def->redefine_stage1_common(dup, file, schema);
+  def->redefine_stage1_common(dup, file);
   def->set_compression_method(dup->compression_method());
   def->create_length_to_internal_length_string();
   return false;
@@ -2814,11 +2895,10 @@ bool Type_handler_string_result::
 bool Type_handler_typelib::
        Column_definition_redefine_stage1(Column_definition *def,
                                          const Column_definition *dup,
-                                         const handler *file,
-                                         const Schema_specification_st *schema)
+                                         const handler *file)
                                          const
 {
-  def->redefine_stage1_common(dup, file, schema);
+  def->redefine_stage1_common(dup, file);
   def->create_length_to_internal_length_typelib();
   return false;
 }
@@ -2827,11 +2907,10 @@ bool Type_handler_typelib::
 bool Type_handler_bit::
        Column_definition_redefine_stage1(Column_definition *def,
                                          const Column_definition *dup,
-                                         const handler *file,
-                                         const Schema_specification_st *schema)
+                                         const handler *file)
                                          const
 {
-  def->redefine_stage1_common(dup, file, schema);
+  def->redefine_stage1_common(dup, file);
   /*
     If we are replacing a field with a BIT field, we need
     to initialize pack_flag.
@@ -7541,6 +7620,7 @@ Field *Type_handler_row::
                             uint32 flags) const
 {
   DBUG_ASSERT(attr->length == 0);
+//DBUG_ASSERT(attr->charset == &my_charset_bin);
   DBUG_ASSERT(f_maybe_null(attr->pack_flag));
   return new (mem_root) Field_row(rec.ptr(), name);
 }
@@ -7553,6 +7633,7 @@ Field *Type_handler_olddecimal::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+//DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new (mem_root)
     Field_decimal(rec.ptr(), (uint32) attr->length,
                   rec.null_ptr(), rec.null_bit(),
@@ -7570,6 +7651,7 @@ Field *Type_handler_newdecimal::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+//  DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new (mem_root)
     Field_new_decimal(rec.ptr(), (uint32) attr->length,
                       rec.null_ptr(), rec.null_bit(),
@@ -7587,6 +7669,7 @@ Field *Type_handler_float::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+//  DBUG_ASSERT(attr->charset == &my_charset_numeric);
   int decimals= f_decimals(attr->pack_flag);
   if (decimals == FLOATING_POINT_DECIMALS)
     decimals= NOT_FIXED_DEC;
@@ -7606,6 +7689,7 @@ Field *Type_handler_double::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   int decimals= f_decimals(attr->pack_flag);
   if (decimals == FLOATING_POINT_DECIMALS)
     decimals= NOT_FIXED_DEC;
@@ -7625,6 +7709,7 @@ Field *Type_handler_tiny::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new (mem_root)
     Field_tiny(rec.ptr(), (uint32) attr->length, rec.null_ptr(), rec.null_bit(),
                attr->unireg_check, name,
@@ -7640,6 +7725,7 @@ Field *Type_handler_short::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new (mem_root)
     Field_short(rec.ptr(), (uint32) attr->length,
                 rec.null_ptr(), rec.null_bit(),
@@ -7656,6 +7742,7 @@ Field *Type_handler_int24::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new (mem_root)
     Field_medium(rec.ptr(), (uint32) attr->length,
                  rec.null_ptr(), rec.null_bit(),
@@ -7672,6 +7759,7 @@ Field *Type_handler_long::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+//  DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new (mem_root)
     Field_long(rec.ptr(), (uint32) attr->length, rec.null_ptr(), rec.null_bit(),
                attr->unireg_check, name,
@@ -7687,6 +7775,7 @@ Field *Type_handler_longlong::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+//  DBUG_ASSERT(attr->charset == &my_charset_numeric);
   if (flags & (VERS_SYS_START_FLAG|VERS_SYS_END_FLAG))
     return new (mem_root)
       Field_vers_trx_id(rec.ptr(), (uint32) attr->length,
@@ -7710,6 +7799,7 @@ Field *Type_handler_timestamp::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new_Field_timestamp(mem_root,
                              rec.ptr(), rec.null_ptr(), rec.null_bit(),
                              attr->unireg_check, name, share,
@@ -7724,6 +7814,7 @@ Field *Type_handler_timestamp2::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new (mem_root)
     Field_timestampf(rec.ptr(), rec.null_ptr(), rec.null_bit(),
                      attr->unireg_check,
@@ -7738,6 +7829,7 @@ Field *Type_handler_year::
                             const Column_definition_attributes *attr,
                                    uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new (mem_root)
     Field_year(rec.ptr(), (uint32) attr->length, rec.null_ptr(), rec.null_bit(),
                attr->unireg_check, name);
@@ -7751,6 +7843,7 @@ Field *Type_handler_date::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new (mem_root)
     Field_date(rec.ptr(),rec.null_ptr(),rec.null_bit(),
                attr->unireg_check, name);
@@ -7764,6 +7857,7 @@ Field *Type_handler_newdate::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new (mem_root)
     Field_newdate(rec.ptr(), rec.null_ptr(), rec.null_bit(),
                   attr->unireg_check, name);
@@ -7777,6 +7871,7 @@ Field *Type_handler_time::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new_Field_time(mem_root, rec.ptr(), rec.null_ptr(), rec.null_bit(),
                         attr->unireg_check, name,
                         attr->temporal_dec(MIN_TIME_WIDTH));
@@ -7790,6 +7885,7 @@ Field *Type_handler_time2::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new (mem_root)
     Field_timef(rec.ptr(), rec.null_ptr(), rec.null_bit(),
                 attr->unireg_check, name,
@@ -7804,6 +7900,7 @@ Field *Type_handler_datetime::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+//  DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new_Field_datetime(mem_root, rec.ptr(), rec.null_ptr(), rec.null_bit(),
                             attr->unireg_check, name,
                             attr->temporal_dec(MAX_DATETIME_WIDTH));
@@ -7817,6 +7914,7 @@ Field *Type_handler_datetime2::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return new (mem_root)
     Field_datetimef(rec.ptr(), rec.null_ptr(), rec.null_bit(),
                     attr->unireg_check, name,
@@ -7844,6 +7942,7 @@ Field *Type_handler_bit::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_numeric);
   return f_bit_as_char(attr->pack_flag) ?
      new (mem_root) Field_bit_as_char(rec.ptr(), (uint32) attr->length,
                                       rec.null_ptr(), rec.null_bit(),
@@ -7862,6 +7961,7 @@ Field *Type_handler_geometry::
                             const Column_definition_attributes *attr,
                             uint32 flags) const
 {
+ // DBUG_ASSERT(attr->charset == &my_charset_bin);
   status_var_increment(current_thd->status_var.feature_gis);
   return new (mem_root)
     Field_geom(rec.ptr(), rec.null_ptr(), rec.null_bit(),
