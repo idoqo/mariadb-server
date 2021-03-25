@@ -58,7 +58,9 @@ table_replication_applier_status_by_worker::m_share=
   "LAST_SEEN_TRANSACTION CHAR(57) not null,"
   "LAST_ERROR_NUMBER INTEGER not null,"
   "LAST_ERROR_MESSAGE VARCHAR(1024) not null,"
-  "LAST_ERROR_TIMESTAMP TIMESTAMP(0) not null)") },
+  "LAST_ERROR_TIMESTAMP TIMESTAMP(0) not null,"
+  "WORKER_IDLE_TIME BIGINT UNSIGNED not null,"
+  "LAST_TRANS_RETRY_COUNT INTEGER not null)") },
   false  /* perpetual */
 };
 
@@ -197,6 +199,11 @@ void table_replication_applier_status_by_worker::make_row(rpl_parallel_thread *r
     m_row.last_error_timestamp= rpt->last_error_timestamp;
   }
 
+  m_row.last_trans_retry_count= rpt->last_trans_retry_count;
+  if (rpt->running)
+    m_row.worker_idle_time= rpt->get_worker_idle_time();
+  else
+    m_row.worker_idle_time= rpt->worker_idle_time;
   m_row_exists= true;
 }
 
@@ -242,6 +249,12 @@ int table_replication_applier_status_by_worker
         break;
       case 6: /*last_error_timestamp*/
         set_field_timestamp(f, m_row.last_error_timestamp);
+        break;
+      case 7: /*worker_idle_time*/
+        set_field_ulonglong(f, m_row.worker_idle_time);
+        break;
+      case 8: /*last_trans_retry_count*/
+        set_field_ulong(f, m_row.last_trans_retry_count);
         break;
       default:
         DBUG_ASSERT(false);

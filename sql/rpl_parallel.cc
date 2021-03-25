@@ -799,6 +799,7 @@ do_retry:
 
   mysql_mutex_lock(&rli->data_lock);
   ++rli->retried_trans;
+  ++rpt->last_trans_retry_count;
   statistic_increment(slave_retried_transactions, LOCK_status);
   mysql_mutex_unlock(&rli->data_lock);
 
@@ -1125,6 +1126,7 @@ handle_rpl_parallel_thread(void *arg)
     uint wait_count= 0;
     rpl_parallel_thread::queued_event *qev, *next_qev;
 
+    rpt->start_time_tracker();
     thd->ENTER_COND(&rpt->COND_rpl_thread, &rpt->LOCK_rpl_thread,
                     &stage_waiting_for_work_from_sql_thread, &old_stage);
     /*
@@ -1148,6 +1150,7 @@ handle_rpl_parallel_thread(void *arg)
     }
     rpt->dequeue1(events);
     thd->EXIT_COND(&old_stage);
+    rpt->add_to_worker_idle_time_and_reset();
 
   more_events:
     for (qev= events; qev; qev= next_qev)
@@ -1193,6 +1196,7 @@ handle_rpl_parallel_thread(void *arg)
       /* Handle a new event group, which will be initiated by a GTID event. */
       if ((event_type= qev->ev->get_type_code()) == GTID_EVENT)
       {
+        rpt->last_trans_retry_count= 0;
         rpt->last_seen_gtid= rgi->current_gtid;
         rpt->channel_name_length= rgi->rli->mi->connection_name.length;
         memcpy(rpt->channel_name, rgi->rli->mi->connection_name.str,

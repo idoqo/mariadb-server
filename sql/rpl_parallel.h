@@ -166,7 +166,30 @@ struct rpl_parallel_thread {
   rpl_gtid last_seen_gtid;
   int last_error_number;
   char last_error_message[MAX_SLAVE_ERRMSG];
+  ulonglong worker_idle_time;
+  ulong last_trans_retry_count;
+  ulonglong start_time;
   ulonglong last_error_timestamp;
+  void start_time_tracker()
+  {
+    start_time= microsecond_interval_timer();
+  }
+  ulonglong compute_time_lapsed()
+  {
+    return (ulonglong)((microsecond_interval_timer() - start_time) / 1000000.0);
+  }
+  void add_to_worker_idle_time_and_reset()
+  {
+    worker_idle_time+= compute_time_lapsed();
+    start_time=0;
+  }
+  ulonglong get_worker_idle_time()
+  {
+    if (start_time)
+      return compute_time_lapsed();
+    else
+      return worker_idle_time;
+  }
   void enqueue(queued_event *qev)
   {
     if (last_in_queue)
