@@ -3010,6 +3010,8 @@ void st_select_lex::init_select()
   select_limit= 0;      /* denotes the default limit = HA_POS_ERROR */
   offset_limit= 0;      /* denotes the default offset = 0 */
   is_set_query_expr_tail= false;
+  select_lock= select_lock_type::NONE;
+  skip_locked= false;
   with_sum_func= 0;
   with_all_modifier= 0;
   is_correlated= 0;
@@ -9702,8 +9704,14 @@ void Lex_select_lock::set_to(SELECT_LEX *sel)
       {
         lock_type= update_lock ? TL_WRITE : TL_READ_WITH_SHARED_LOCKS;
       }
+      sel->select_lock= update_lock ? st_select_lex::select_lock_type::FOR_UPDATE
+	             : st_select_lex::select_lock_type::IN_SHARE_MODE;
       sel->set_lock_for_tables(lock_type, false, skip_locked);
     }
+  }
+  else
+  {
+    sel->select_lock= st_select_lex::select_lock_type::NONE;
   }
 }
 

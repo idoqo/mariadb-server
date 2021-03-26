@@ -8885,11 +8885,12 @@ bool st_select_lex::add_window_spec(THD *thd,
 */
 
 void st_select_lex::set_lock_for_tables(thr_lock_type lock_type, bool for_update,
-					bool skip_locked)
+					bool skip_locked_arg)
 {
   DBUG_ENTER("set_lock_for_tables");
   DBUG_PRINT("enter", ("lock_type: %d  for_update: %d  skip_locked %d",
 		               lock_type, for_update, skip_locked));
+  skip_locked= skip_locked_arg;
   for (TABLE_LIST *tables= table_list.first;
        tables;
        tables= tables->next_local)

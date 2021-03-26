@@ -1192,6 +1192,10 @@ public:
   Item *select_limit, *offset_limit;  /* LIMIT clause parameters */
   bool is_set_query_expr_tail;
 
+  enum select_lock_type {NONE, IN_SHARE_MODE, FOR_UPDATE};
+  enum select_lock_type select_lock;
+  bool skip_locked;
+
   /// Array of pointers to top elements of all_fields list
   Ref_ptr_array ref_pointer_array;
 
