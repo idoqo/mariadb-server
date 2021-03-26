@@ -121,7 +121,7 @@ DROP TABLE t1;
 # End of 10.3 tests
 #
 #
-# MDEV-13115 SKIP LOCKED
+# MDEV-13115 SKIP LOCKED (broken due to MDEV-10063)
 #
 CREATE TABLE t1 (a INT NOT NULL PRIMARY KEY);
 insert into t1 values (1),(2),(3),(4);
@@ -130,10 +130,10 @@ CREATE VIEW v1 AS SELECT * FROM t1 LOCK IN SHARE MODE SKIP LOCKED;
 CREATE VIEW v2 AS SELECT * FROM t1 FOR UPDATE SKIP LOCKED;
 SHOW CREATE VIEW v1;
 View	Create View	character_set_client	collation_connection
-v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v1` AS select `t1`.`a` AS `a` from `t1`	latin1	latin1_swedish_ci
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v1` AS select `t1`.`a` AS `a` from `t1` lock in share mode skip locked	latin1	latin1_swedish_ci
 SHOW CREATE VIEW v2;
 View	Create View	character_set_client	collation_connection
-v2	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v2` AS select `t1`.`a` AS `a` from `t1`	latin1	latin1_swedish_ci
+v2	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v2` AS select `t1`.`a` AS `a` from `t1` for update skip locked	latin1	latin1_swedish_ci
 BEGIN;
 select * from v1 limit 2;
 a

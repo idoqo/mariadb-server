@@ -208,7 +208,7 @@ DROP TABLE t1;
 --echo #
 
 --echo #
---echo # MDEV-13115 SKIP LOCKED
+--echo # MDEV-13115 SKIP LOCKED (broken due to MDEV-10063)
 --echo #
 
 CREATE TABLE t1 (a INT NOT NULL PRIMARY KEY);
