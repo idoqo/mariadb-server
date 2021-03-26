@@ -4455,70 +4455,102 @@ innobase_rollback_trx(
 
 struct pending_checkpoint {
 	struct pending_checkpoint *next;
-	handlerton *hton;
 	void *cookie;
-	ib_uint64_t lsn;
+	lsn_t lsn;
 };
-static struct pending_checkpoint *pending_checkpoint_list;
-static struct pending_checkpoint *pending_checkpoint_list_end;
+static std::atomic<pending_checkpoint*> pending_checkpoint_list;
+static pending_checkpoint *pending_checkpoint_list_end;
 
 /*****************************************************************//**
 Handle a commit checkpoint request from server layer.
 We put the request in a queue, so that we can notify upper layer about
 checkpoint complete when we have flushed the redo log.
 If we have already flushed all relevant redo log, we notify immediately.*/
-static
-void
-innobase_checkpoint_request(
-	handlerton *hton,
-	void *cookie)
+static void innobase_checkpoint_request(handlerton *hton, void *cookie)
 {
-	ib_uint64_t			lsn;
-	ib_uint64_t			flush_lsn;
-	struct pending_checkpoint *	entry;
+  ut_ad(hton == innodb_hton_ptr);
 
-	/* Do the allocation outside of lock to reduce contention. The normal
-	case is that not everything is flushed, so we will need to enqueue. */
-	entry = static_cast<struct pending_checkpoint *>
-		(my_malloc(PSI_INSTRUMENT_ME, sizeof(*entry), MYF(MY_WME)));
-	if (!entry) {
-		sql_print_error("Failed to allocate %u bytes."
-				" Commit checkpoint will be skipped.",
-				static_cast<unsigned>(sizeof(*entry)));
-		return;
-	}
+  const lsn_t lsn= log_sys.get_lsn();
 
-	entry->next = NULL;
-	entry->hton = hton;
-	entry->cookie = cookie;
+  if (log_sys.get_flushed_lsn() >= lsn)
+  {
+    commit_checkpoint_notify_ha(nullptr, cookie);
+    return;
+  }
 
-	mysql_mutex_lock(&pending_checkpoint_mutex);
-	lsn = log_get_lsn();
-	flush_lsn = log_get_flush_lsn();
-	if (lsn > flush_lsn) {
-		/* Put the request in queue.
-		When the log gets flushed past the lsn, we will remove the
-		entry from the queue and notify the upper layer. */
-		entry->lsn = lsn;
-		if (pending_checkpoint_list_end) {
-			pending_checkpoint_list_end->next = entry;
-			/* There is no need to order the entries in the list
-			by lsn. The upper layer can accept notifications in
-			any order, and short delays in notifications do not
-			significantly impact performance. */
-		} else {
-			pending_checkpoint_list = entry;
-		}
-		pending_checkpoint_list_end = entry;
-		entry = NULL;
-	}
-	mysql_mutex_unlock(&pending_checkpoint_mutex);
+  pending_checkpoint *entry= static_cast<pending_checkpoint*>
+    (my_malloc(PSI_INSTRUMENT_ME, sizeof(*entry), MYF(MY_WME)));
+  if (!entry)
+  {
+    sql_print_error("Failed to allocate %zu bytes."
+		    " Commit checkpoint will be skipped.", sizeof *entry);
+    return;
+  }
 
-	if (entry) {
-		/* We are already flushed. Notify the checkpoint immediately. */
-		commit_checkpoint_notify_ha(entry->hton, entry->cookie);
-		my_free(entry);
-	}
+  entry->next= nullptr;
+  entry->cookie= cookie;
+
+  /* Put the request in queue.
+  When the log gets flushed past the lsn, we will remove the
+  entry from the queue and notify the upper layer. */
+  entry->lsn= lsn;
+  mysql_mutex_lock(&pending_checkpoint_mutex);
+  if (pending_checkpoint_list_end)
+    /* There is no need to order the entries in the list by lsn. The
+    upper layer can accept notifications in any order, and short
+    delays in notifications do not significantly impact
+    performance. */
+    pending_checkpoint_list_end->next= entry;
+  else
+    pending_checkpoint_list.store(entry, std::memory_order_acquire);
+  pending_checkpoint_list_end= entry;
+  mysql_mutex_unlock(&pending_checkpoint_mutex);
+#if 1 /* FIXME: this should not be needed, but occasionally we miss writes */
+  log_write_up_to(lsn, true);
+#endif
+}
+
+static void innodb_binlog_notify(lsn_t lsn, pending_checkpoint *pending)
+{
+  pending_checkpoint *entry, *last_ready= nullptr;
+  for (entry= pending; entry; entry= entry->next)
+  {
+    /* Notify checkpoints up until the first entry that has not
+    been fully flushed to the redo log. Since we do not maintain
+    the list ordered, in principle there could be more entries
+    later than were also flushed. But there is no harm in
+    delaying notifications for those a bit. And in practise, the
+    list is unlikely to have more than one element anyway, as we
+    flush the redo log at least once every second. */
+    if (entry->lsn > lsn)
+      break;
+    last_ready= entry;
+  }
+
+  if (last_ready)
+  {
+    /* We found some pending checkpoints that are now flushed to
+    disk. So remove them from the list. */
+    pending_checkpoint_list.store(entry, std::memory_order_acquire);
+    if (!entry)
+      pending_checkpoint_list_end= nullptr;
+  }
+
+  mysql_mutex_unlock(&pending_checkpoint_mutex);
+
+  if (!last_ready)
+    return;
+
+  /* Now that we have released the lock, notify upper layer about all
+  commit checkpoints that have now completed. */
+  do
+  {
+    entry= pending;
+    pending= pending->next;
+    commit_checkpoint_notify_ha(nullptr, entry->cookie);
+    my_free(entry);
+  }
+  while (entry != last_ready);
 }
 
 /*****************************************************************//**
@@ -4527,69 +4559,16 @@ to a new position. We use this to notify upper layer of a new commit
 checkpoint when necessary.*/
 UNIV_INTERN
 void
-innobase_mysql_log_notify(
-/*======================*/
-	ib_uint64_t	flush_lsn)	/*!< in: LSN flushed to disk */
+innobase_mysql_log_notify(ib_uint64_t flush_lsn)
 {
-	struct pending_checkpoint *	pending;
-	struct pending_checkpoint *	entry;
-	struct pending_checkpoint *	last_ready;
+  if (!pending_checkpoint_list.load(std::memory_order_acquire))
+    return;
 
-	/* It is safe to do a quick check for NULL first without lock.
-	Even if we should race, we will at most skip one checkpoint and
-	take the next one, which is harmless. */
-	if (!pending_checkpoint_list)
-		return;
-
-	mysql_mutex_lock(&pending_checkpoint_mutex);
-	pending = pending_checkpoint_list;
-	if (!pending)
-	{
-		mysql_mutex_unlock(&pending_checkpoint_mutex);
-		return;
-	}
-
-	last_ready = NULL;
-	for (entry = pending; entry != NULL; entry = entry -> next)
-	{
-		/* Notify checkpoints up until the first entry that has not
-		been fully flushed to the redo log. Since we do not maintain
-		the list ordered, in principle there could be more entries
-		later than were also flushed. But there is no harm in
-		delaying notifications for those a bit. And in practise, the
-		list is unlikely to have more than one element anyway, as we
-		flush the redo log at least once every second. */
-		if (entry->lsn > flush_lsn)
-			break;
-		last_ready = entry;
-	}
-
-	if (last_ready)
-	{
-		/* We found some pending checkpoints that are now flushed to
-		disk. So remove them from the list. */
-		pending_checkpoint_list = entry;
-		if (!entry)
-			pending_checkpoint_list_end = NULL;
-	}
-
-	mysql_mutex_unlock(&pending_checkpoint_mutex);
-
-	if (!last_ready)
-		return;
-
-	/* Now that we have released the lock, notify upper layer about all
-	commit checkpoints that have now completed. */
-	for (;;) {
-		entry = pending;
-		pending = pending->next;
-
-		commit_checkpoint_notify_ha(entry->hton, entry->cookie);
-
-		my_free(entry);
-		if (entry == last_ready)
-			break;
-	}
+  mysql_mutex_lock(&pending_checkpoint_mutex);
+  if (auto pending= pending_checkpoint_list.load(std::memory_order_relaxed))
+    innodb_binlog_notify(flush_lsn, pending);
+  else
+    mysql_mutex_unlock(&pending_checkpoint_mutex);
 }
 
 /*****************************************************************//**
