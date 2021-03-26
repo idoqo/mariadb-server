@@ -9161,6 +9161,7 @@ opt_lock_wait_timeout_new:
         }
         | SKIP_SYM LOCKED_SYM
         {
+          $$.empty();
           $$.skip_locked= 1;
         }
       ;
