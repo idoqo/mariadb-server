@@ -9139,6 +9139,7 @@ opt_skip_locked:
         }
         | SKIP_SYM LOCKED_SYM
         {
+          Lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SKIP_LOCKED);
           $$= 1;
         }
 
@@ -9163,6 +9164,7 @@ opt_lock_wait_timeout_new:
         {
           $$.empty();
           $$.skip_locked= 1;
+          Lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SKIP_LOCKED);
         }
       ;
 

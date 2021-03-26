@@ -9697,7 +9697,6 @@ void Lex_select_lock::set_to(SELECT_LEX *sel)
       sel->parent_lex->safe_to_cache_query= 0;
       if (skip_locked)
       {
-        sel->parent_lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SKIP_LOCKED);
         lock_type= update_lock ? TL_WRITE_SKIP_LOCKED : TL_READ_SKIP_LOCKED;
       }
       else
