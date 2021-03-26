@@ -38,6 +38,7 @@ connection slave;
 Slave_DDL_Groups= 20;
 Slave_Non_Transactional_Groups= 20;
 Slave_Transactional_Groups= 0;
+include/assert.inc [Channel_name must be 'master2']
 #master 1
 connection master1;
 ##Running CURD operation

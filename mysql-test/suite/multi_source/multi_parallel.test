@@ -84,6 +84,13 @@ show status like 'slave_running';
 --let $status= query_get_value(show slave 'master2' status, Slave_Transactional_Groups, 1)
 --echo Slave_Transactional_Groups= $status;
 
+# MDEV-20220: Merge 5.7 P_S replication table 'replication_applier_status_by_worker
+# Verify the correctness of 'Channel_name'
+--let $name= `select distinct channel_name from performance_schema.replication_applier_status_by_worker`
+--let $assert_text= Channel_name must be 'master2'
+--let $assert_cond= "$name"= "master2";
+--source include/assert.inc
+
 --echo #master 1
 --connection master1
 
