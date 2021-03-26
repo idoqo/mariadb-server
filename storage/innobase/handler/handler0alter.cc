@@ -8114,8 +8114,11 @@ success:
 		/* Memorize the future transaction ID for committing
 		the data dictionary change, to be reported by
 		ha_innobase::table_version(). */
-		m_prebuilt->trx_id = static_cast<ha_innobase_inplace_ctx*>
-			(ha_alter_info->handler_ctx)->trx->id;
+		m_prebuilt->trx_id = (ha_alter_info->handler_flags
+				      & ~INNOBASE_INPLACE_IGNORE)
+			? static_cast<ha_innobase_inplace_ctx*>
+			(ha_alter_info->handler_ctx)->trx->id
+			: 0;
 		DBUG_RETURN(false);
 	}
 
