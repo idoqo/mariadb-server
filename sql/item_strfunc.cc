@@ -520,6 +520,10 @@ String *Item_func_decode_histogram::val_str(String *str)
   }
   type--;
 
+  if (type == JSON) {
+    return str;
+  }
+
   tmp.length(0);
   if (!(res= args[1]->val_str(&tmp)))
   {
