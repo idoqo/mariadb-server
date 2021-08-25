@@ -1992,13 +1992,21 @@ public:
 class Histogram_builder_json : public Histogram_builder
 {
   std::vector<std::string> bucket_bounds;
-  bool got_first_value = false;
 
 public:
   Histogram_builder_json(Field *col, uint col_len, ha_rows rows)
   : Histogram_builder(col, col_len, rows)
   {
     bucket_bounds = {};
+    // not sure why 1 is added to the denominator for binary histograms
+    // but I feel this makes more sense for json histograms because
+    // we want to assume each bucket contain (num_rows/hist_width-1) values in them
+    // that way, the last element becomes the left bound of the last bucket
+    // i.e if hist_width is just 2, then buckets should be divided into [MIN_VALUE to N-1]
+    // and [MAX-VALUE to ALL_VALUES_GREATER_THAN_MAX]
+    // i.e with 20 rows and 2 histogram size, bucket={[0-19], [20-INFINITY]}
+    // todo: checkout for division by zero
+    bucket_capacity = (double) records/(hist_width-1);
   }
 
   ~Histogram_builder_json() override = default;
@@ -2011,7 +2019,10 @@ public:
     count+= elem_cnt;
     if (curr_bucket == hist_width)
       return 0;
-    if (count > bucket_capacity * (curr_bucket + 1))
+    // we check if this is a left bound or the last element (since)
+    // the last element is always a left-bound (of the last bucket i.e [MAX-INFINITY])
+    if ((count == records) ||
+        count > bucket_capacity * (curr_bucket))
     {
       column->store_field_value((uchar *) elem, col_length);
       StringBuffer<MAX_FIELD_WIDTH> val;
@@ -2020,7 +2031,7 @@ public:
       bucket_bounds.insert(it+curr_bucket, val.c_ptr());
       curr_bucket++;
       while (curr_bucket != hist_width &&
-             count > bucket_capacity * (curr_bucket + 1))
+             count > bucket_capacity * (curr_bucket))
       {
         it = bucket_bounds.begin();
         bucket_bounds.insert(it+curr_bucket, bucket_bounds[curr_bucket-1]);

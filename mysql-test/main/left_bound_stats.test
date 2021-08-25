@@ -1,0 +1,45 @@
+--source include/have_sequence.inc
+create table users (
+  city varchar(100)
+);
+set histogram_size=10;
+insert into users select 'Moscow' from seq_1_to_99;
+insert into users select 'Helsinki' from seq_1_to_2;
+set histogram_type=json;
+analyze table users persistent for all;
+SELECT histogram FROM mysql.column_stats WHERE table_name='users';
+
+explain extended select * from users where city = 'Moscow';
+analyze select * from users where city = 'Moscow';
+
+explain extended select * from users where city = 'Helsinki';
+analyze select * from users where city = 'helsinki';
+
+explain extended select * from users where city < 'Moscow';
+analyze select * from users where city < 'Moscow';
+
+explain extended select * from users where city >= 'Abidjan';
+analyze select * from users where city >= 'Abidjan';
+drop table users;
+
+create table users (
+  city varchar(100)
+);
+set histogram_size=10;
+insert into users select 'Moscow' from seq_1_to_2;
+insert into users select 'Helsinki' from seq_1_to_99;
+set histogram_type=json;
+analyze table users persistent for all;
+SELECT histogram FROM mysql.column_stats WHERE table_name='users';
+
+explain extended select * from users where city = 'Helsinki';
+analyze select * from users where city = 'helsinki';
+
+explain extended select * from users where city = 'Moscow';
+analyze select * from users where city = 'Moscow';
+
+explain extended select * from users where city < 'Moscow';
+analyze select * from users where city < 'Moscow';
+
+explain extended select * from users where city >= 'Abidjan';
+analyze select * from users where city >= 'Abidjan';
